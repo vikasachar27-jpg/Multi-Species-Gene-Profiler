@@ -120,7 +120,10 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue")) as demo:
 
 if __name__ == "__main__":
     import os
-    # Render assigns a dynamic port, default to 10000 if not found
     port = int(os.environ.get("PORT", 10000))
-    demo.launch(server_name="0.0.0.0", server_port=port)
-
+    # show_api=False is the key to stopping the TypeError
+    demo.launch(
+        server_name="0.0.0.0", 
+        server_port=port, 
+        show_api=False
+    )
