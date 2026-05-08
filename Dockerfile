@@ -1,26 +1,32 @@
-# Use a lightweight Python 3.10 image
+# Use a highly compatible Python image
 FROM python:3.10-slim
 
-# Set the working directory inside the container
+# Set environment variables to prevent Python from writing .pyc files
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
 WORKDIR /app
 
-# Install system-level dependencies for Matplotlib and Biopython
+# Install system dependencies needed for Biopython and Matplotlib
 RUN apt-get update && apt-get install -y \
     build-essential \
+    pkg-config \
+    libfreetype6-dev \
+    libpng-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file first to leverage Docker cache
-COPY requirements.txt .
+# Upgrade pip to the latest version
+RUN pip install --no-cache-dir --upgrade pip
 
-# Install Python dependencies
+# Install dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of your application code
+# Copy the rest of the application
 COPY . .
 
-# Render uses port 10000 by default for Web Services
+# Expose Render's default port
 EXPOSE 10000
 
-# Run the application
-# We use uvicorn logic through app.py's demo.launch()
+# Start the application
 CMD ["python", "app.py"]
