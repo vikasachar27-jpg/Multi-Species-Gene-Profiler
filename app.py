@@ -1,35 +1,32 @@
 import gradio as gr
 import matplotlib.pyplot as plt
-import io
 import pandas as pd
+import io
 from Bio import AlignIO, Phylo
+from Bio.SeqUtils.ProtParam import ProteinAnalysis
 from Bio.Phylo.TreeConstruction import DistanceCalculator, DistanceTreeConstructor
 
-# --- UNIQUE ANALYTICAL FUNCTIONS ---
+# --- 1. BIOPHYSICAL & EVOLUTIONARY LOGIC ---
 
-def get_alignment_stats(aln):
-    """Generates unique metadata about the alignment."""
-    stats = {
-        "Total Sequences": len(aln),
-        "Alignment Length": aln.get_alignment_length(),
-        "Avg. Gap Density (%)": round((sum(rec.seq.count("-") for rec in aln) / (len(aln) * aln.get_alignment_length())) * 100, 2)
+def analyze_protein_biophysics(aln):
+    """Calculates research-grade biochemical parameters of the reference sequence."""
+    # Using the first sequence as the reference
+    ref_seq = str(aln[0].seq).replace("-", "").upper()
+    # Filter for standard amino acids to ensure ProtParam compatibility
+    clean_seq = "".join([aa for aa in ref_seq if aa in "ACDEFGHIKLMNPQRSTVWY"])
+    analysed = ProteinAnalysis(clean_seq)
+    
+    return {
+        "Molecular Weight (Da)": round(analysed.molecular_weight(), 2),
+        "Isoelectric Point (pI)": round(analysed.isoelectric_point(), 2),
+        "Instability Index": round(analysed.instability_index(), 2),
+        "Aromaticity": round(analysed.aromaticity(), 4)
     }
-    return pd.DataFrame([stats])
-
-def calculate_gc_content(aln):
-    """Unique Feature: Calculates GC content across the aligned sequences."""
-    gc_scores = []
-    for record in aln:
-        s = str(record.seq).upper()
-        gc = (s.count('G') + s.count('C')) / len(s) * 100 if len(s) > 0 else 0
-        gc_scores.append(round(gc, 2))
-    return gc_scores
 
 def calculate_conservation(aln):
-    """Calculates residue identity scores."""
+    """Calculates column-wise identity scores across the alignment."""
     scores = []
-    length = aln.get_alignment_length()
-    for i in range(length):
+    for i in range(aln.get_alignment_length()):
         column = aln[:, i]
         filtered = column.replace("-", "")
         if not filtered:
@@ -38,75 +35,90 @@ def calculate_conservation(aln):
         scores.append(max(counts) / len(aln))
     return scores
 
-# --- MAIN PIPELINE ---
+# --- 2. MAIN PROCESSING PIPELINE ---
 
-def process_and_analyze(file):
+def full_bio_pipeline(file):
     try:
-        # 1. Load Alignment
+        # Load Alignment (Detects Clustal or FASTA format)
         try:
             alignment = AlignIO.read(file.name, "clustal")
         except:
             alignment = AlignIO.read(file.name, "fasta")
 
-        # 2. Generate Basic Graphs
+        # 1. Biophysical Parameters
+        bio_params = analyze_protein_biophysics(alignment)
+        params_df = pd.DataFrame([bio_params])
+        
+        # 2. Alignment Metadata Stats
+        meta_df = pd.DataFrame([{
+            "Total Sequences": len(alignment),
+            "Alignment Length": alignment.get_alignment_length(),
+            "Gap Frequency (%)": round((sum(r.seq.count('-') for r in alignment)/(len(alignment)*len(alignment[0])))*100, 1)
+        }])
+
+        # 3. Evolutionary Conservation Map
         scores = calculate_conservation(alignment)
-        fig_cons, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(scores, color='#2c3e50', linewidth=1)
-        ax.fill_between(range(len(scores)), scores, color='#3498db', alpha=0.3)
-        ax.set_title("Functional Conservation Profile", fontsize=12)
+        fig_cons, ax_c = plt.subplots(figsize=(10, 4))
+        ax_c.plot(scores, color='#1e3d59', linewidth=1)
+        ax_c.fill_between(range(len(scores)), scores, color='#3498db', alpha=0.2)
+        ax_c.axhline(0.9, color='red', linestyle='--', alpha=0.5, label="Functional Threshold (90%)")
+        ax_c.set_title("Sequence Conservation & Evolutionary Constraint")
+        ax_c.set_xlabel("Residue Position")
+        ax_c.set_ylabel("Identity Score")
+        ax_c.legend()
         plt.tight_layout()
 
-        # 3. Generate Phylogenetic Tree
+        # 4. Phylogenetic Tree (NJ Method)
         calc = DistanceCalculator('identity')
-        tree = DistanceTreeConstructor(calc, 'nj').build_tree(alignment)
+        constructor = DistanceTreeConstructor(calc, 'nj')
+        tree = constructor.build_tree(alignment)
+        
         fig_tree = plt.figure(figsize=(8, 6))
         ax_t = fig_tree.add_subplot(1, 1, 1)
         Phylo.draw(tree, axes=ax_t, do_show=False)
+        ax_t.set_title("Evolutionary Lineage (Neighbor-Joining)")
         plt.tight_layout()
 
-        # 4. UNIQUE DATA: GC Content & Stats
-        gc_data = calculate_gc_content(alignment)
-        species_names = [r.id for r in alignment]
-        fig_gc, ax_gc = plt.subplots(figsize=(8, 4))
-        ax_gc.bar(species_names, gc_data, color=['#e67e22', '#27ae60', '#8e44ad', '#c0392b'])
-        ax_gc.set_title("Genomic GC Content Signature (%)")
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-
-        stats_df = get_alignment_stats(alignment)
-
-        return fig_cons, fig_tree, fig_gc, stats_df, "Success: Bio-Analysis Complete!"
+        return fig_cons, fig_tree, params_df, meta_df, "Analysis Complete!"
 
     except Exception as e:
         return None, None, None, None, f"Error: {str(e)}"
 
-# --- GRADIO INTERFACE ---
+# --- 3. GRADIO INTERFACE ---
 
-with gr.Blocks(theme=gr.themes.Soft(primary_hue="teal")) as demo:
-    gr.Markdown("# 🧬 Bio-Evolutionary Advanced Dashboard")
-    gr.Markdown("Upload an MSA file to explore conservation, phylogeny, and unique genomic signatures.")
+with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue")) as demo:
+    gr.Markdown("# 🧬 Bio-Insight PRO: End-to-End Molecular Suite")
+    gr.Markdown("An integrated suite for sequence identity, phylogeny, and biophysical analysis.")
     
     with gr.Row():
         with gr.Column(scale=1):
-            file_input = gr.File(label="Upload .aln or .fasta Alignment")
-            run_btn = gr.Button("🔍 Deep Bio-Analysis", variant="primary")
-            status = gr.Textbox(label="Status",lines=6)
-            stats_table = gr.DataFrame(label="Alignment Metadata")
+            file_input = gr.File(label="Upload Alignment (.aln or .fasta)")
+            run_btn = gr.Button("🚀 Execute Deep Analysis", variant="primary")
+            status = gr.Textbox(label="Status", interactive=False)
+            
+            gr.Markdown("### 📊 Biophysical Properties")
+            biophys_table = gr.DataFrame()
+            
+            gr.Markdown("### ⚙️ Alignment Metadata")
+            meta_table = gr.DataFrame()
 
         with gr.Column(scale=2):
             with gr.Tabs():
-                with gr.TabItem("Conservation Map"):
+                with gr.TabItem("Evolutionary Map"):
                     plot_cons = gr.Plot()
+                    gr.Markdown("**Interpretation:** Higher peaks indicate regions of high evolutionary constraint, representing critical functional domains.")
+                
                 with gr.TabItem("Phylogenetic Tree"):
                     plot_tree = gr.Plot()
-                with gr.TabItem("GC Signature"):
-                    plot_gc = gr.Plot()
+                    gr.Markdown("**Note:** Branch lengths represent the estimated evolutionary distance between species.")
 
     run_btn.click(
-        fn=process_and_analyze, 
-        inputs=file_input, 
-        outputs=[plot_cons, plot_tree, plot_gc, stats_table, status]
+        fn=full_bio_pipeline, 
+        inputs=[file_input], 
+        outputs=[plot_cons, plot_tree, biophys_table, meta_table, status]
     )
 
 if __name__ == "__main__":
     demo.launch()
+
+
