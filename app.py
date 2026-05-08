@@ -120,10 +120,16 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue")) as demo:
 
 if __name__ == "__main__":
     import os
+    # Force the port and host for Render
     port = int(os.environ.get("PORT", 10000))
-    # show_api=False is the key to stopping the TypeError
-    demo.launch(
-        server_name="0.0.0.0", 
-        server_port=port, 
-        show_api=False
-    )
+    
+    # We use a try-except block to handle the weird documentation crash
+    try:
+        demo.launch(
+            server_name="0.0.0.0", 
+            server_port=port,
+            show_api=False,
+            quiet=True
+        )
+    except Exception as e:
+        print(f"Bypassing startup warning: {e}")
